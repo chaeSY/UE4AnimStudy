@@ -7,6 +7,7 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
+#include "Components/ArrowComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Camera/PlayerCameraManager.h"
 
@@ -28,17 +29,6 @@ ASYCharacter::ASYCharacter()
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	check(Camera);
 	Camera->SetupAttachment(SpringArm);
-
-	//temp
-	LookAtCamLimitYaw = 60.f;
-	LookAtCamLimitPitch = 60.f;
-
-	LookAtCamLimitYawCos = FMath::Cos(FMath::DegreesToRadians(LookAtCamLimitYaw));
-	LookAtCamLimitPitchCos = FMath::Cos(FMath::DegreesToRadians(LookAtCamLimitPitch));
-
-	UE_LOG(LogClass, Warning, TEXT("YawCos: %f"), LookAtCamLimitYawCos);
-	UE_LOG(LogClass, Warning, TEXT("PitchCos: %f"), LookAtCamLimitPitchCos);
-
 }
 
 // Called when the game starts or when spawned
@@ -47,27 +37,78 @@ void ASYCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	PlayerController = GetController<APlayerController>();
-	check(PlayerController); // todo: check가 어떤 역할을 하는지  분석
+	check(PlayerController); // todo: check가 어떤 역할을 하는지 분석
 
 	CameraManager = PlayerController->PlayerCameraManager;
 	check(CameraManager);
 
 	PlayerController->bShowMouseCursor = true;
 
-	// 앞으로 향하고 있는 head의 Bone을 캐싱
-	OriginHeadRot = GetMesh()->GetBoneQuaternion(TEXT("Head"), EBoneSpaces::WorldSpace).Rotator();
+	// look at camera
+	{
+		LookAtCamLimitYawCos = FMath::Cos(FMath::DegreesToRadians(LookAtCamLimitYawDegree));
+		LookAtCamLimitPitchCos = FMath::Cos(FMath::DegreesToRadians(LookAtCamLimitPitchDegree));
 
-	// 
+		// cache refernce pose head rotation
+		if (GetMesh() && GetMesh()->SkeletalMesh)
+		{
+			int HeadBoneIndex = GetMesh()->GetBoneIndex(TEXT("Head"));
+			FMatrix HeadBoneMatrix = GetMesh()->SkeletalMesh->GetComposedRefPoseMatrix(HeadBoneIndex);
+			RefPoseHeadBoneRotation = HeadBoneMatrix.Rotator() + GetMesh()->GetRelativeRotation();
+
+			UE_LOG(LogClass, Warning, TEXT("head bone rotation: %s"), *RefPoseHeadBoneRotation.ToString());
+		}
+	}
+
+	// spring arm
 	if (SpringArm)
 	{
-		TargetSpringArmLength = SpringArm->TargetArmLength;
+		DesiredSpringArmLength = SpringArm->TargetArmLength;
 	}
+}
+
+float ASYCharacter::GetLookAtCamSpeed()
+{
+	return LookAtCamSpeed;
 }
 
 bool ASYCharacter::IsLookAtCam()
 {
-	//FVector ForwardVector = 
-	return false;
+	if (!bLookAtCam)
+		return false;
+
+	if (!CameraManager)
+		return false;
+
+	FVector CameraPos = CameraManager->GetCameraLocation();
+	FVector HeadPos = GetMesh()->GetBoneLocation(TEXT("head"));
+	FVector HeadToCamera = CameraPos - HeadPos;
+
+	// get yaw cos
+	FVector ForwardVectorExceptZ = GetActorForwardVector();
+	ForwardVectorExceptZ.Z = 0.f;
+	ForwardVectorExceptZ.Normalize();
+
+	FVector HeadToCameraExceptZ = HeadToCamera.GetSafeNormal2D();
+	float YawCos = FVector::DotProduct(ForwardVectorExceptZ, HeadToCameraExceptZ);
+	
+	if (YawCos < LookAtCamLimitYawCos)
+		return false;
+
+	// get pitch cos
+	FVector ForwardVectorExceptY = GetActorForwardVector();
+	ForwardVectorExceptY.Y = 0.f;
+	ForwardVectorExceptY.Normalize();
+
+	FVector HeadToCameraExceptY = HeadToCamera;
+	HeadToCameraExceptY.Y = 0.f;
+	HeadToCameraExceptY.Normalize();
+	float PitchCos = FVector::DotProduct(ForwardVectorExceptY, HeadToCameraExceptY);
+
+	if (PitchCos < LookAtCamLimitPitchCos)
+		return false;
+
+	return true;
 }
 
 // Called every frame
@@ -75,56 +116,10 @@ void ASYCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	//
-	float YawCos = 0.f;
-	float PitchCos = 0.f;
-
-	FVector CameraPos = CameraManager->GetCameraLocation();
-	FVector HeadPos = GetMesh()->GetBoneLocation(TEXT("head"));
-	FVector HeadToCamera = CameraPos - HeadPos;
-
-	// get yaw except z 
-	{
-		FVector ForwardVectorExceptZ = GetActorForwardVector();
-		ForwardVectorExceptZ.Z = 0.f;
-		ForwardVectorExceptZ.Normalize();
-
-		FVector HeadToCameraExceptZ = HeadToCamera.GetSafeNormal2D();
-		YawCos = FVector::DotProduct(ForwardVectorExceptZ, HeadToCameraExceptZ);
-	}
-
-	//get pitch except y
-	{
-		FVector ForwardVectorExceptY = GetActorForwardVector();
-		ForwardVectorExceptY.Y = 0.f;
-		ForwardVectorExceptY.Normalize();
-
-		FVector HeadToCameraExceptY = HeadToCamera;
-		HeadToCameraExceptY.Y = 0.f;
-		HeadToCameraExceptY.Normalize();
-		
-		PitchCos = FVector::DotProduct(ForwardVectorExceptY, HeadToCameraExceptY);
-	}
-
-	if (YawCos >= LookAtCamLimitYawCos && PitchCos >= LookAtCamLimitPitchCos)
-	{
-		bLookAtCam = true;
-
-		// Look At Camera
-		HeadToCamera.Normalize();
-		LookAtCam = HeadToCamera.Rotation() + OriginHeadRot;
-	}
-	else
-	{
-		bLookAtCam = false;
-
-		LookAtCam = GetMesh()->GetBoneQuaternion(TEXT("Head"), EBoneSpaces::WorldSpace).Rotator();
-	}
-
 	//SpringArm zoom in/ zoom out
 	if (SpringArm)
 	{
-		SpringArm->TargetArmLength = FMath::FInterpTo(SpringArm->TargetArmLength, TargetSpringArmLength, GetWorld()->GetDeltaSeconds(), 5.f);
+		SpringArm->TargetArmLength = FMath::FInterpTo(SpringArm->TargetArmLength, DesiredSpringArmLength, GetWorld()->GetDeltaSeconds(), 5.f);
 	}
 
 	if (GEngine)
@@ -133,13 +128,25 @@ void ASYCharacter::Tick(float DeltaTime)
 		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("Actor Rotation: %s"), *GetActorRotation().ToString()), false);
 		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("Controller Rotation: %s"), *GetControlRotation().ToString()), false);
 		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("SpringArm Rotation: %s"), *SpringArm->GetRelativeRotation().ToString()), false);
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("bLookAtCam: %d"), bLookAtCam), false);
 		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("HeadRotation: %s"), *GetMesh()->GetBoneQuaternion(TEXT("Head"), EBoneSpaces::WorldSpace).Rotator().ToString()), false);
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("HeadToCameraRotation: %s"), *HeadToCamera.Rotation().ToString()), false);
+		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("lookat: %d"), IsLookAtCam()), false);
 		//LookAtCam = GetMesh()->GetBoneQuaternion(TEXT("Head"), EBoneSpaces::WorldSpace).Rotator();
-
 	}
 }
+
+FRotator ASYCharacter::GetWorldHeadRotationToCamera()
+{
+	if (GetMesh() && CameraManager)
+	{
+		FVector CameraPos = CameraManager->GetCameraLocation();
+		FVector HeadPos = GetMesh()->GetBoneLocation(TEXT("head"));
+		FVector HeadToCamera = CameraPos - HeadPos;
+		return RefPoseHeadBoneRotation + HeadToCamera.Rotation();
+	}
+
+	return FRotator();
+}
+
 
 // Called to bind functionality to input
 void ASYCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -247,14 +254,14 @@ void ASYCharacter::OnMouseLButtonUp()
 	}
 }
 
-const static float lengthTick = 80.f;
+const static float lengthTick = 80.f; //temp
 void ASYCharacter::OnMouseWheelUp()
 {
 	if (SpringArm)
 	{
 		float l = SpringArm->TargetArmLength - lengthTick;
 		float r = SpringArmLengthMin;
-		TargetSpringArmLength = FMath::Max(l, r);
+		DesiredSpringArmLength = FMath::Max(l, r);
 	}
 }
 
@@ -264,6 +271,6 @@ void ASYCharacter::OnMouseWheelDown()
 	{
 		float l = SpringArm->TargetArmLength + lengthTick;
 		float r = SpringArmLengthMax;
-		TargetSpringArmLength = FMath::Max(l, r);
+		DesiredSpringArmLength = FMath::Min(l, r);
 	}
 }

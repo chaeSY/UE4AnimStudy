@@ -26,13 +26,6 @@ public:
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-	void MoveRight(float Value);
-	void MoveForward(float Value);
-	
-	void InputMouseX(float Value);
-	void InputMouseY(float Value);
-
-
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	class UCameraComponent* Camera;
@@ -47,42 +40,55 @@ public:
 	class APlayerCameraManager* CameraManager;
 
 private:
+	void MoveRight(float Value);
+	void MoveForward(float Value);
+
+	void InputMouseX(float Value);
+	void InputMouseY(float Value);
+
 	void OnMouseLButtonDown();
 	void OnMouseLButtonUp();
+	void OnMouseWheelUp();
+	void OnMouseWheelDown();
 
 	// cam rotate
 	bool bMouseLButtonPressed = false;
 	FVector2D MousePosBeforePressed = { 0.f, 0.f };
 
 	// springarm zoom in / zoom out
-	void OnMouseWheelUp();
-	void OnMouseWheelDown();
-
 	enum {
 		SpringArmLengthMin = 100,
 		SpringArmLengthMax = 400
 	};
 
-	float TargetSpringArmLength = 0.f;
+	float DesiredSpringArmLength = 0.f;
 
-	// toggle lookat cam
+	// look at cam
+
+
+	// test key 
 	void InputXButtonDown();
 
 public:
-	bool bLookAtCam; // temp
 	bool IsLookAtCam();
-	FRotator LookAtCam;
-	FRotator OriginHeadRot;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float GetLookAtCamSpeed();
+	//FRotator WorldHeadRotationToCamera;
+	FRotator GetWorldHeadRotationToCamera();
+
+private:
+	UPROPERTY(Category = "LookAtCamera", EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
+	bool bLookAtCam;
+
+	UPROPERTY(Category = "LookAtCamera", EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
 	float LookAtCamSpeed;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float LookAtCamLimitYaw;
+	UPROPERTY(Category = "LookAtCamera", EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
+	float LookAtCamLimitYawDegree;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float LookAtCamLimitPitch;
+	UPROPERTY(Category = "LookAtCamera", EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
+	float LookAtCamLimitPitchDegree;
 	
 	float LookAtCamLimitYawCos;
 	float LookAtCamLimitPitchCos;
+	FRotator RefPoseHeadBoneRotation;
 };

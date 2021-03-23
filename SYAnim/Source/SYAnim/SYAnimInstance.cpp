@@ -6,49 +6,51 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/KismetMathLibrary.h"
 
+void USYAnimInstance::NativeInitializeAnimation()
+{
+	Super::NativeInitializeAnimation();
+
+	ASYCharacter* Character = Cast<ASYCharacter>(TryGetPawnOwner());
+	if (Character && Character->IsValidLowLevel())
+	{
+		if (USkeletalMeshComponent* SkeletalMeshComponent = Character->GetMesh())
+		{
+			if (SkeletalMeshComponent->SkeletalMesh)
+			{
+				int HeadBoneIndex = SkeletalMeshComponent->GetBoneIndex(TEXT("Head"));
+				FMatrix HeadBoneMatrix = SkeletalMeshComponent->SkeletalMesh->GetComposedRefPoseMatrix(HeadBoneIndex);
+				WorldHeadRotation = HeadBoneMatrix.Rotator() + SkeletalMeshComponent->GetRelativeRotation();
+			}
+		}
+	}
+}
+
 void USYAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 {
 	Super::NativeUpdateAnimation(DeltaSeconds);
 
-	ASYCharacter* ch = Cast<ASYCharacter>(TryGetPawnOwner());
+	ASYCharacter* Character = Cast<ASYCharacter>(TryGetPawnOwner());
 
-	if (ch && ch->IsValidLowLevel())
+	if (Character && Character->IsValidLowLevel())
 	{
 		// speed / direction
 		{
-			FVector MovementVector = ch->GetCharacterMovement()->Velocity;
-			FRotator CharacterRotator = ch->GetActorRotation();
+			FVector MovementVector = Character->GetCharacterMovement()->Velocity;
+			FRotator CharacterRotator = Character->GetActorRotation();
 
 			Speed = MovementVector.Size();
-			Degree = CalculateDirection(MovementVector, CharacterRotator);
+			Direction = CalculateDirection(MovementVector, CharacterRotator);
 		}
 
 		// look at camera
 		{
-			bLookAtCam = ch->bLookAtCam;
+			bLookAtCam = Character->IsLookAtCam();
 			if (bLookAtCam)
 			{
-				LookAtCam = FMath::RInterpTo(LookAtCam, ch->LookAtCam, DeltaSeconds, ch->LookAtCamSpeed);
-			}
-			else
-			{
-				LookAtCam = ch->LookAtCam;
+				float InterpolationSpeed = Character->GetLookAtCamSpeed();
+				WorldHeadRotation = FMath::RInterpTo(WorldHeadRotation, Character->GetWorldHeadRotationToCamera(), DeltaSeconds, InterpolationSpeed);
 			}
 		}
-
-		//log
-		{
-			/*
-			if (GEngine)
-			{
-				GEngine->ClearOnScreenDebugMessages();
-				GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("animinstance look: %s"), *LookAtCam.ToString()), false);
-				GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("character look: %s"), *ch->LookAtCam.ToString()), false);
-			}
-			*/
-		}
-
-
 
 		/*
 		// 1. rotator to matrix

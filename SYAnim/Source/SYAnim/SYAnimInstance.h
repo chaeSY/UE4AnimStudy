@@ -15,6 +15,7 @@ class SYANIM_API USYAnimInstance : public UAnimInstance
 	GENERATED_BODY()
 	
 public:
+	virtual void NativeInitializeAnimation() override;
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 
 public:
@@ -22,10 +23,10 @@ public:
 	float Speed = 0.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float Degree = 0.f;
+	float Direction = 0.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FRotator LookAtCam;
+	FRotator WorldHeadRotation;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bLookAtCam;
