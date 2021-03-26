@@ -10,6 +10,7 @@
 #include "Components/ArrowComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Camera/PlayerCameraManager.h"
+#include "Animation/AnimMontage.h"
 
 // Sets default values
 ASYCharacter::ASYCharacter()
@@ -29,6 +30,10 @@ ASYCharacter::ASYCharacter()
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	check(Camera);
 	Camera->SetupAttachment(SpringArm);
+
+	WeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Weapon"));
+	check(WeaponMesh);
+	WeaponMesh->SetupAttachment(GetMesh(), TEXT("Weapon"));
 }
 
 // Called when the game starts or when spawned
@@ -65,6 +70,9 @@ void ASYCharacter::BeginPlay()
 	{
 		DesiredSpringArmLength = SpringArm->TargetArmLength;
 	}
+
+	// action
+	InitAction();
 }
 
 float ASYCharacter::GetLookAtCamSpeed()
@@ -122,15 +130,11 @@ void ASYCharacter::Tick(float DeltaTime)
 		SpringArm->TargetArmLength = FMath::FInterpTo(SpringArm->TargetArmLength, DesiredSpringArmLength, GetWorld()->GetDeltaSeconds(), 5.f);
 	}
 
+
+	// screen debug message
 	if (GEngine)
 	{
 		GEngine->ClearOnScreenDebugMessages();
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("Actor Rotation: %s"), *GetActorRotation().ToString()), false);
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("Controller Rotation: %s"), *GetControlRotation().ToString()), false);
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("SpringArm Rotation: %s"), *SpringArm->GetRelativeRotation().ToString()), false);
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("HeadRotation: %s"), *GetMesh()->GetBoneQuaternion(TEXT("Head"), EBoneSpaces::WorldSpace).Rotator().ToString()), false);
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("lookat: %d"), IsLookAtCam()), false);
-		//LookAtCam = GetMesh()->GetBoneQuaternion(TEXT("Head"), EBoneSpaces::WorldSpace).Rotator();
 	}
 }
 
@@ -147,6 +151,28 @@ FRotator ASYCharacter::GetWorldHeadRotationToCamera()
 	return FRotator();
 }
 
+void ASYCharacter::InitAction()
+{
+	FAction Action1;
+	Action1.ActionID = 1;
+	Action1.SectionName = TEXT("Attack1");
+	Action1.NextActionID = 2;
+	
+
+	FAction Action2;
+	Action2.ActionID = 2;
+	Action2.SectionName = TEXT("Attack2");
+	Action2.NextActionID = 3;
+
+	FAction Action3;
+	Action3.ActionID = 3;
+	Action3.SectionName = TEXT("Attack3");
+	Action3.NextActionID = 0;
+
+	ActionMap.Add(Action1.ActionID, Action1);
+	ActionMap.Add(Action2.ActionID, Action2);
+	ActionMap.Add(Action3.ActionID, Action3);
+}
 
 // Called to bind functionality to input
 void ASYCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -160,27 +186,38 @@ void ASYCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 
 	PlayerInputComponent->BindAction(TEXT("MouseLButton"), IE_Pressed, this, &ASYCharacter::OnMouseLButtonDown);
 	PlayerInputComponent->BindAction(TEXT("MouseLButton"), IE_Released, this, &ASYCharacter::OnMouseLButtonUp);
-	PlayerInputComponent->BindAction(TEXT("X"), IE_Pressed, this, &ASYCharacter::InputXButtonDown);
-
 	PlayerInputComponent->BindAction(TEXT("MouseWheelUp"), IE_Released, this, &ASYCharacter::OnMouseWheelUp);
 	PlayerInputComponent->BindAction(TEXT("MouseWheelDown"), IE_Released, this, &ASYCharacter::OnMouseWheelDown);
+	PlayerInputComponent->BindAction(TEXT("X"), IE_Pressed, this, &ASYCharacter::InputXButtonDown);
 }
 
 void ASYCharacter::InputXButtonDown()
 {
-	bLookAtCam = !bLookAtCam;
+	PlayAction();
 }
 
 void ASYCharacter::MoveRight(float Value)
 {
-	float speed = 1.f; //temp
-	AddMovementInput(GetActorRightVector(), Value * speed);
+	if (!GetMesh() || !GetMesh()->GetAnimInstance())
+		return;
+
+	if (!GetMesh()->GetAnimInstance()->Montage_IsPlaying(AttackMontage))
+	{
+		float speed = 1.f; //temp
+		AddMovementInput(GetActorRightVector(), Value * speed);
+	}
 }
 
 void ASYCharacter::MoveForward(float Value)
 {
-	float speed = 1.f; //temp
-	AddMovementInput(GetActorForwardVector(), Value * speed);
+	if (!GetMesh() || !GetMesh()->GetAnimInstance())
+		return;
+
+	if (!GetMesh()->GetAnimInstance()->Montage_IsPlaying(AttackMontage))
+	{
+		float speed = 1.f; //temp
+		AddMovementInput(GetActorForwardVector(), Value * speed);
+	}
 }
 
 void ASYCharacter::InputMouseX(float Value)
@@ -272,5 +309,30 @@ void ASYCharacter::OnMouseWheelDown()
 		float l = SpringArm->TargetArmLength + lengthTick;
 		float r = SpringArmLengthMax;
 		DesiredSpringArmLength = FMath::Min(l, r);
+	}
+}
+
+void ASYCharacter::PlayAction()
+{
+	if (!CanNextAction)
+		return;
+
+	if (CurrentAction)
+	{
+		CurrentAction = ActionMap.Find(CurrentAction->NextActionID);
+		if (CurrentAction)
+		{
+			CanNextAction = false;
+			PlayAnimMontage(AttackMontage, 1.0f, CurrentAction->SectionName);
+		}
+	}
+	else //root action
+	{
+		CurrentAction = ActionMap.Find(1);
+		if (CurrentAction)
+		{
+			CanNextAction = false;
+			PlayAnimMontage(AttackMontage, 1.0f, CurrentAction->SectionName);
+		}
 	}
 }

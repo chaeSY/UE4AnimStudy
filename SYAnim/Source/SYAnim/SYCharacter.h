@@ -6,6 +6,16 @@
 #include "GameFramework/Character.h"
 #include "SYCharacter.generated.h"
 
+
+USTRUCT()
+struct FAction
+{
+	GENERATED_USTRUCT_BODY()
+	int ActionID;
+	FName SectionName;
+	int NextActionID;
+};
+
 UCLASS()
 class SYANIM_API ASYCharacter : public ACharacter
 {
@@ -26,13 +36,17 @@ public:
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-public:
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+private:
+	UPROPERTY(Category = "Components", VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class UCameraComponent* Camera;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UPROPERTY(Category = "Components", VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class USpringArmComponent* SpringArm;
 
+	UPROPERTY(Category = "Components", EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
+	class UStaticMeshComponent* WeaponMesh;
+
+public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	class APlayerController* PlayerController;
 
@@ -63,16 +77,12 @@ private:
 
 	float DesiredSpringArmLength = 0.f;
 
-	// look at cam
-
-
 	// test key 
 	void InputXButtonDown();
 
 public:
 	bool IsLookAtCam();
 	float GetLookAtCamSpeed();
-	//FRotator WorldHeadRotationToCamera;
 	FRotator GetWorldHeadRotationToCamera();
 
 private:
@@ -91,4 +101,19 @@ private:
 	float LookAtCamLimitYawCos;
 	float LookAtCamLimitPitchCos;
 	FRotator RefPoseHeadBoneRotation;
+
+
+// action
+private:
+	UPROPERTY(Category = "Animations", EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
+	class UAnimMontage* AttackMontage;
+	
+	// cache
+	TMap<int, FAction> ActionMap;
+	void InitAction();
+	void PlayAction();
+
+public:
+	FAction* CurrentAction = nullptr;
+	bool CanNextAction = true;
 };
